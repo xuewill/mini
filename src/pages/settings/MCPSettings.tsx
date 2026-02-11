@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash, CheckCircle2, XCircle, RefreshCw, AlertCircle, Loader2, FolderOpen, FileJson } from "lucide-react";
+import { Plus, Trash, RefreshCw, FolderOpen, FileJson } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface McpServerConfig {
   id: string;
@@ -35,15 +34,21 @@ export function MCPSettings() {
 
   const loadServers = useCallback(async () => {
     // @ts-ignore
-    const data = await window.ipcRenderer.invoke("get-mcp-servers");
-    setServers(data || []);
+    if (window.ipcRenderer) {
+        // @ts-ignore
+        const data = await window.ipcRenderer.invoke("get-mcp-servers");
+        setServers(data || []);
+    }
   }, []);
 
   const loadStatuses = useCallback(async () => {
     try {
       // @ts-ignore
-      const data = await window.ipcRenderer.invoke("get-mcp-status");
-      setStatuses(data || []);
+      if (window.ipcRenderer) {
+        // @ts-ignore
+        const data = await window.ipcRenderer.invoke("get-mcp-status");
+        setStatuses(data || []);
+      }
     } catch {
       // MCP status IPC may not be ready yet
     }
@@ -51,8 +56,11 @@ export function MCPSettings() {
 
   const loadConfigPath = useCallback(async () => {
     // @ts-ignore
-    const path = await window.ipcRenderer.invoke("get-mcp-config-path");
-    setConfigPath(path || "");
+    if (window.ipcRenderer) {
+        // @ts-ignore
+        const path = await window.ipcRenderer.invoke("get-mcp-config-path");
+        setConfigPath(path || "");
+    }
   }, []);
 
   useEffect(() => {
@@ -64,12 +72,15 @@ export function MCPSettings() {
   const saveServers = async (updatedServers: McpServerConfig[]) => {
     setServers(updatedServers);
     // @ts-ignore
-    await window.ipcRenderer.invoke("save-mcp-servers", updatedServers);
+    if (window.ipcRenderer) {
+        // @ts-ignore
+        await window.ipcRenderer.invoke("save-mcp-servers", updatedServers);
+    }
   };
 
   const handleAddServer = async () => {
     if (!newServer.name || !newServer.command) return;
-    
+
     const server: McpServerConfig = {
       id: crypto.randomUUID(),
       name: newServer.name,
@@ -91,8 +102,11 @@ export function MCPSettings() {
     setRefreshing(true);
     try {
       // @ts-ignore
-      await window.ipcRenderer.invoke("refresh-mcp-connections");
-      await loadStatuses();
+      if (window.ipcRenderer) {
+        // @ts-ignore
+        await window.ipcRenderer.invoke("refresh-mcp-connections");
+        await loadStatuses();
+      }
     } catch (err) {
       console.error("Failed to refresh MCP connections:", err);
     } finally {
@@ -102,11 +116,14 @@ export function MCPSettings() {
 
   const handleSelectConfigFile = async () => {
     // @ts-ignore
-    const filePath = await window.ipcRenderer.invoke("select-mcp-config-file");
-    if (!filePath) return;
+    if (window.ipcRenderer) {
+        // @ts-ignore
+        const filePath = await window.ipcRenderer.invoke("select-mcp-config-file");
+        if (!filePath) return;
 
-    setConfigPath(filePath);
-    await handleImportConfig(filePath);
+        setConfigPath(filePath);
+        await handleImportConfig(filePath);
+    }
   };
 
   const handleImportConfig = async (path?: string) => {
@@ -116,15 +133,18 @@ export function MCPSettings() {
     setImportStatus(null);
 
     // @ts-ignore
-    const result = await window.ipcRenderer.invoke("import-mcp-config", targetPath);
-    
-    if (result?.success) {
-      setImportStatus({ type: 'success', message: `已导入 ${result.count} 个服务器` });
-      await loadServers();
-      // Auto reconnect after import
-      await handleReconnect();
-    } else {
-      setImportStatus({ type: 'error', message: result?.error || '导入失败' });
+    if (window.ipcRenderer) {
+        // @ts-ignore
+        const result = await window.ipcRenderer.invoke("import-mcp-config", targetPath);
+
+        if (result?.success) {
+            setImportStatus({ type: 'success', message: `Imported ${result.count} servers` });
+            await loadServers();
+            // Auto reconnect after import
+            await handleReconnect();
+        } else {
+            setImportStatus({ type: 'error', message: result?.error || 'Import failed' });
+        }
     }
   };
 
@@ -132,177 +152,160 @@ export function MCPSettings() {
     return statuses.find(s => s.id === serverId);
   };
 
-  const StatusIcon = ({ status }: { status?: McpServerStatus }) => {
-    if (!status) return <XCircle className="h-4 w-4 text-muted-foreground" />;
-    switch (status.status) {
-      case 'connected':
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case 'connecting':
-        return <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />;
-      case 'error':
-        return <AlertCircle className="h-4 w-4 text-destructive" />;
-      default:
-        return <XCircle className="h-4 w-4 text-muted-foreground" />;
-    }
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="space-y-0.5">
-        <h2 className="text-2xl font-bold tracking-tight">MCP 服务器</h2>
-        <p className="text-muted-foreground">
-          管理本地模型上下文协议 (MCP) 服务器。
-        </p>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+         <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">MCP Servers</h1>
+            <p className="text-sm text-muted-foreground mt-2">
+                Manage connections to Model Context Protocol servers.
+            </p>
+         </div>
+         <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReconnect}
+            disabled={refreshing || servers.length === 0}
+         >
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh Connections
+         </Button>
       </div>
 
-      {/* JSON Config File Import */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <FileJson className="h-5 w-5 text-primary" />
-            <div>
-              <CardTitle>JSON 配置文件</CardTitle>
-              <CardDescription>
-                从标准 JSON 配置文件导入 MCP 服务器（兼容 Claude Desktop / Cursor 格式）。
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder="配置文件路径 (mcp_config.json)"
-              value={configPath}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfigPath(e.target.value)}
-              className="flex-1 font-mono text-sm"
-            />
-            <Button variant="outline" size="icon" onClick={handleSelectConfigFile} title="选择文件">
-              <FolderOpen className="h-4 w-4" />
-            </Button>
-          </div>
-          {configPath && (
-            <Button variant="secondary" size="sm" onClick={() => handleImportConfig()}>
-              <RefreshCw className="mr-2 h-3 w-3" />
-              重新导入
-            </Button>
-          )}
-          {importStatus && (
-            <p className={`text-sm ${importStatus.type === 'success' ? 'text-green-600' : 'text-destructive'}`}>
-              {importStatus.message}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <div className="h-px w-full bg-border/40" />
 
-      {/* Server List */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>已配置的服务器</CardTitle>
-              <CardDescription>
-                {configPath
-                  ? `服务器列表来自配置文件，也可手动添加。`
-                  : `可通过上方导入配置文件或下方手动添加。`}
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReconnect}
-              disabled={refreshing || servers.length === 0}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              重连
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {servers.length === 0 && (
-            <p className="text-sm text-muted-foreground">未配置服务器。</p>
-          )}
-          {servers.map((server) => {
-            const serverStatus = getStatusForServer(server.id);
-            return (
-              <div
-                key={server.id}
-                className="flex items-center justify-between rounded-lg border p-4"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{server.name}</span>
-                    <StatusIcon status={serverStatus} />
-                    {serverStatus?.status === 'connected' && (
-                      <span className="text-[10px] text-green-600 font-medium">Connected</span>
-                    )}
-                    {serverStatus?.status === 'error' && (
-                      <span className="text-[10px] text-destructive" title={serverStatus.error}>
-                        Error
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground font-mono bg-muted p-1 rounded inline-block">
-                    {server.command} {server.args.join(" ")}
-                  </div>
-                  {serverStatus?.error && (
-                    <div className="text-xs text-destructive/80 mt-1">
-                      {serverStatus.error}
-                    </div>
-                  )}
+      {/* Server List Grid */}
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+         {/* Existing Servers */}
+         {servers.map((server) => {
+             const serverStatus = getStatusForServer(server.id);
+             const isConnected = serverStatus?.status === 'connected';
+
+             return (
+                 <div key={server.id} className="group relative overflow-hidden rounded-xl border border-border/50 bg-card p-5 transition-all hover:border-primary/20 hover:shadow-md">
+                     {/* Status Dot */}
+                     <div className="absolute right-4 top-4">
+                        {isConnected ? (
+                            <div className="relative flex h-3 w-3">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                            </div>
+                        ) : (
+                            <div className={`h-2.5 w-2.5 rounded-full ${serverStatus?.status === 'error' ? 'bg-destructive' : 'bg-muted-foreground/30'}`} />
+                        )}
+                     </div>
+
+                     <div className="mb-4">
+                        <h3 className="font-medium leading-none">{server.name}</h3>
+                        <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className={cn(
+                                "inline-flex items-center rounded-full px-2 py-0.5 font-medium ring-1 ring-inset",
+                                isConnected ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20" :
+                                serverStatus?.status === 'error' ? "bg-red-50 text-red-700 ring-red-600/10" :
+                                "bg-gray-50 text-gray-600 ring-gray-500/10"
+                            )}>
+                                {serverStatus?.status || 'disconnected'}
+                            </span>
+                        </div>
+                     </div>
+
+                     {/* Command Preview */}
+                     <div className="mb-4 rounded-md bg-zinc-950/50 p-3 font-mono text-[10px] text-muted-foreground border border-border/40">
+                        <div className="flex gap-2 opacity-70">
+                            <span className="text-primary">$</span>
+                            <span className="truncate">{server.command} {server.args.join(" ")}</span>
+                        </div>
+                     </div>
+
+                     {/* Error Message */}
+                     {serverStatus?.error && (
+                        <div className="mb-4 text-xs text-destructive bg-destructive/5 p-2 rounded-md border border-destructive/10">
+                            {serverStatus.error}
+                        </div>
+                     )}
+
+                     {/* Actions */}
+                     <div className="flex items-center justify-end gap-2 border-t border-border/40 pt-4 mt-auto">
+                        <Button variant="ghost" size="sm" className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(server.id)}>
+                            Delete
+                        </Button>
+                     </div>
+                 </div>
+             );
+         })}
+
+         {/* Add New Card */}
+         <div className="flex flex-col rounded-xl border border-dashed border-border/60 bg-muted/5 p-6 transition-colors hover:bg-muted/10">
+             <div className="mb-4 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Plus className="h-4 w-4" />
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDelete(server.id)}
-                >
-                  <Trash className="h-4 w-4 text-destructive" />
-                </Button>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+                <h3 className="font-medium text-sm">Connect New Server</h3>
+             </div>
 
-      {/* Add Manual Server */}
-      <Card>
-        <CardHeader>
-          <CardTitle>手动添加服务器</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-2">
-            <Label>名称</Label>
-            <Input
-              placeholder="例如：文件系统服务器"
-              value={newServer.name}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewServer({ ...newServer, name: e.target.value })}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label>命令</Label>
-            <Input
-              placeholder="例如：npx"
-              value={newServer.command}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewServer({ ...newServer, command: e.target.value })}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label>参数 (逗号分隔)</Label>
-            <Input
-              placeholder="e.g. -y, @anthropics/mcp-server-filesystem, ./"
-              value={newServer.args?.join(", ")}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setNewServer({
-                  ...newServer,
-                  args: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-                })
-              }
-            />
-          </div>
-          <Button onClick={handleAddServer} disabled={!newServer.name || !newServer.command}>
-            <Plus className="mr-2 h-4 w-4" /> 添加服务器
-          </Button>
-        </CardContent>
-      </Card>
+             <div className="space-y-3 flex-1">
+                <Input
+                    placeholder="Server Name"
+                    value={newServer.name}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewServer({ ...newServer, name: e.target.value })}
+                    className="h-8 text-sm bg-background"
+                />
+                <Input
+                    placeholder="Command (e.g., npx)"
+                    value={newServer.command}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewServer({ ...newServer, command: e.target.value })}
+                    className="h-8 text-sm bg-background"
+                />
+                 <Input
+                    placeholder="Args (comma separated)"
+                    value={newServer.args?.join(", ")}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        setNewServer({
+                        ...newServer,
+                        args: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                        })
+                    }
+                    className="h-8 text-sm bg-background"
+                />
+             </div>
+
+             <Button className="mt-4 w-full" size="sm" onClick={handleAddServer} disabled={!newServer.name || !newServer.command}>
+                Add Server
+             </Button>
+
+             <div className="relative mt-4">
+                <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-border/40" />
+                </div>
+                <div className="relative flex justify-center text-[10px] uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or Import Config</span>
+                </div>
+             </div>
+
+            <div className="mt-4 flex gap-2">
+                <Input
+                     placeholder="Path to mcp_config.json"
+                     value={configPath}
+                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfigPath(e.target.value)}
+                     className="h-8 text-xs font-mono"
+                />
+                 <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={handleSelectConfigFile}>
+                    <FolderOpen className="h-3.5 w-3.5" />
+                </Button>
+            </div>
+             <Button variant="secondary" size="sm" className="mt-2 w-full text-xs" onClick={() => handleImportConfig()} disabled={!configPath}>
+                <FileJson className="mr-2 h-3.5 w-3.5" />
+                Import JSON
+            </Button>
+
+            {importStatus && (
+                <p className={`mt-2 text-center text-xs ${importStatus.type === 'success' ? 'text-green-600' : 'text-destructive'}`}>
+                    {importStatus.message}
+                </p>
+            )}
+         </div>
+      </div>
     </div>
   );
 }
